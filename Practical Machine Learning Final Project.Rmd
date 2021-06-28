@@ -1,0 +1,151 @@
+---
+title: "Practical Machine Learning Final Project"
+author: "Katherine Williams"
+date: "6/28/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+
+# Downloading Data
+
+The data is downloaded in two datasets a training and testing set
+
+```{r}
+downloadcsv <- function(url, nastrings) {
+        temp <- tempfile()
+        download.file(url, temp, method = "curl")
+        data <- read.csv(temp, na.strings = nastrings)
+        unlink(temp)
+        return(data)
+}
+
+trainurl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+train <- downloadcsv(trainurl, c("", "NA", "#DIV/0!"))
+
+testurl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+test <- downloadcsv(testurl, c("", "NA", "#DIV/0!"))
+```
+
+# Data Preprocessing
+
+## Training set partitioning
+
+The training set are divided into a training and a validation set 
+```{r}
+library(caret)
+
+set.seed(123456)
+trainset <- createDataPartition(train$classe, p = 0.8, list = FALSE)
+Training <- train[trainset, ]
+Validation <- train[-trainset, ]
+```
+
+## Feature Selection
+
+Variables that might cause problems in training our model, such as those with near zero variance, those with a large number of missing values, or descriptive feilds, will be excluded from the analysis.
+
+```{r}
+# exclude features with near zero variance
+nzvcol <- nearZeroVar(Training)
+Training <- Training[, -nzvcol]
+
+# exclude columns where 40% or more are missing values 
+# exclude descriptive columns like name etc
+cntlength <- sapply(Training, function(x) {
+    sum(!(is.na(x) | x == ""))
+})
+nullcol <- names(cntlength[cntlength < 0.6 * length(Training$classe)])
+descriptcol <- c("X", "user_name", "raw_timestamp_part_1", "raw_timestamp_part_2", 
+    "cvtd_timestamp", "new_window", "num_window")
+excludecols <- c(descriptcol, nullcol)
+Training <- Training[, !names(Training) %in% excludecols]
+
+```
+
+
+# Model Developement
+
+With our new training set we can work towards developing a model that predicts the classe of each observation in the data set. 
+
+## Random Forest
+
+We will be building the model using a Random Forest approch. Random Forest selects the most important variables for us, while still being robust to correlated covariates and outliers. 
+
+```{r}
+
+library(randomForest)
+
+rfModel <- randomForest(as.factor(classe) ~ ., data = Training, importance = TRUE, ntrees = 10)
+
+```
+
+## Model Validation
+
+Testing the model on both the training set and the cross validation set.
+
+### Training set accuracy
+
+Testing the model against the set used to build it should result in very high accuracy.
+
+```{r}
+Training$classe<- factor(Training$classe)
+library(e1071)
+
+ptraining <- predict(rfModel, Training)
+print(confusionMatrix(ptraining, Training$classe))
+
+```
+
+#### Training Set Results
+
+As expected the model does an excellent job predicting the classes of the training set. But this is not necessarily proof that it will do well on the test set.
+
+### Validation Set Accuracy
+
+The Validation set a portion of the original training set that is not included training the model. After the model is built it is used to determine the out-of-sample accuracy of the model. This can help to determine if the model has been over fit to the training set, or if it is more widely applicable to data of the same type.
+
+```{r}
+
+Validation$classe<- factor(Validation$classe)
+
+pvalidation <- predict(rfModel, Validation)
+print(confusionMatrix(pvalidation, Validation$classe))
+
+```
+
+#### Cross Validation Results
+
+For the Validation Set the model has a 99.5% Accuracy rate or an out-of-sample error of 0.5%. Therefore we can say that the model works very well on not just the training set but also on data not used to train the model.
+
+
+# Test set Prediction
+
+Now that we have built and validated our model, we can run it on the testing set to determine our final results.
+
+```{r}
+ptest <- predict(rfModel, test)
+ptest
+
+answers <- as.vector(ptest)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
